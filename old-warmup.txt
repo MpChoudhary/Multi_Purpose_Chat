@@ -1,0 +1,265 @@
+//HEAD
+/*
+This is where I kept our old main().
+There are some things I don't think I quite got refactored in,
+so if you wrote something and don't see it up above, find it down here.
+*/
+
+
+/*
+
+int main(int argc, char * argv[])
+{
+	int nbytes;
+    int empty_slot;
+    int user_idx;
+	setup_connection("SAM_CHAT"); // Specifies the connection point as argument.
+
+	USER user_list[MAX_USER];
+	init_user_list(user_list);          // Initialize user list
+
+	char buf[MAX_MSG];
+	fcntl(0, F_SETFL, fcntl(0, F_GETFL)| O_NONBLOCK); // manipulates fd for stdin, nonblock
+	print_prompt("admin");
+
+	//Set up pipes for child processes
+	//Any child process can work with these?
+	int pipe_SERVER_reading_from_child[2];
+	int pipe_SERVER_writing_to_child[2];
+
+	char user_id[MAX_USER_ID];
+
+	//Pipes between CHILD and USER/CLIENT
+	int pipe_user_reading_from_server[2];
+	int pipe_user_writing_to_server[2];
+	//We're going to need to differentiate between users.
+	//Also, if the server writes something to all - can it just put it in the user_reading_from_server, and
+	//then each child process reading from it separately will be okay, or will that read flush out the pipe...?
+
+	//Use fcntl() to make these two pipes non-blocking
+	fcntl(pipe_user_writing_to_server[0], F_SETFL, fcntl(pipe_user_writing_to_server[0], F_GETFL) | O_NONBLOCK);
+	fcntl(pipe_user_reading_from_server[0], F_SETFL, fcntl(pipe_user_reading_from_server[0], F_GETFL) | O_NONBLOCK);
+
+	// Server process: Add a new user information into an empty slot
+	// poll child processes and handle user commands
+	// Poll stdin (input from the terminal) and handle administrative command
+	while (1) {
+		// waiting for connection from users...
+		if (get_connection(user_id, pipe_user_reading_from_server,pipe_user_writing_to_server) == -1) {
+			usleep(500);
+		}
+		else {
+
+			//LABEL to jump to, whenever a new connection is made past the first
+			newConnectionLabel :
+
+			empty_slot = find_empty_slot(user_list);
+
+			//find_user_idx (given to us) is a little mis-named; it's checking for that NAME existing in the user_list.
+			//Returning -1 is a GOOD THING - that means that user_id isn't already present in the list.
+			user_idx = find_user_index(user_list, user_id);
+
+			//Checks to see if an empty slot was found
+			if (empty_slot == -1)
+				printf("\nNo more room for a new user");
+			else if (user_idx != -1) {
+				//Shouldn't this print in the user terminal?
+				printf("\nUser id already taken: %s", user_id); // fix, use ": <id>"
+				fflush(stdout);
+			}
+			else {
+
+				//I think a ">" before notices makes sense?
+				printf("\n>User joined: %s\n", user_id); //use idx here too
+				fflush(stdout);
+
+				//This has to happen before the fork, or at least doesn't seem to work if we do it after.
+				//Some piping is done by get_connection - frankly, I thought it piped these.
+				//We either aren't making enough pipes, or we're referring to them wrongly in some way.
+				pipe(pipe_SERVER_writing_to_child);
+				pipe(pipe_SERVER_reading_from_child);
+
+				//Same as use of fcntl above - make read non-blocking
+				fcntl(pipe_SERVER_writing_to_child[0], F_SETFL, fcntl(pipe_SERVER_writing_to_child[0], F_GETFL) | O_NONBLOCK);
+				fcntl(pipe_SERVER_reading_from_child[0], F_SETFL, fcntl(pipe_SERVER_reading_from_child[0], F_GETFL) | O_NONBLOCK);
+
+				pid_t childpid;
+
+				int status;
+				childpid = fork();
+
+
+				~~~PARENT (SERVER) CODE~~~
+
+				if (childpid > 0){           // parent: add user info into empty slot
+
+					/*
+					/This code, outside of the while loop below, will run once each time a user connects.
+					Either this or the code directly above( piping pipe_server_writing_to_child and pipe_server_reading_from_child)
+					are the most likely things that we need to change.
+					The below call (add_user) could potentially be modified, but I'm not sure how.
+
+
+					add_user(empty_slot, user_list, childpid, user_id, pipe_SERVER_writing_to_child[1], pipe_user_writing_to_server[1]);
+
+					//Close write end of read pipe, read end of write pipe to CHILD
+					close(pipe_SERVER_reading_from_child[1]);
+					close(pipe_SERVER_writing_to_child[0]);
+
+					//Now that we've forked, these two pipes should be entirely associated with the CHILD and USER.
+					//THIS WAS THE BIG PROBLEM BEFORE
+					close(pipe_user_writing_to_server[0]);
+					close(pipe_user_reading_from_server[0]);
+					close(pipe_user_writing_to_server[1]);
+					close(pipe_user_reading_from_server[1]);
+
+					while(1){               // add user info into empty slot
+
+						//parent needs to check for additional users connecting past the first
+						if (get_connection(user_id, pipe_user_reading_from_server,pipe_user_writing_to_server) == -1) {
+							usleep(500);
+						}
+						else {
+							//I know this is dirty, but the alternative was way too much refactoring. This is only used when we need an additional connection.
+							goto newConnectionLabel;
+						}
+
+						memset(buf, '\0', sizeof(buf));  // overwrite the buffer
+
+            // Make stdout non-blocking
+            fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
+						//POLL STDIN------------------------------------------
+						nbytes = read(0, buf, MAX_MSG);
+						if (nbytes == -1 && errno == EAGAIN){
+							usleep(2);
+						}
+						else if (nbytes > 0) {
+							// get_command_type(buf); //What is this for?
+							printf("ADMIN: %s", buf);
+              int index = 0 ;
+              index = get_command_type(buf);
+
+              // 6 command type so 6 switch cases
+              switch (index) {
+                case 0 : // list
+                          printf("List:\n");
+                          list_users(-1, user_list);
+                case 1 : // kick
+                          printf("Kick:\n");
+                case 2 : // p2p
+                          printf("p2p:\n");
+                case 3 : // seg
+                          printf("Seg:\n");
+                case 4 : // exit
+                          printf("Exit:\n");
+              }
+						}
+
+						//POLL CHILD------------------------------------------
+						memset(buf, '\0', sizeof(buf));  // overwrite the buffer
+
+						//I think this needs to iterate through all of the child processes.
+						//For now, I'm just going to try and access it through userlist at 0
+
+							//This is the read we have been using - from the non-user-specific pipe.
+						nbytes = read(pipe_SERVER_reading_from_child[0], buf, MAX_MSG);
+
+						//nbytes = read(user_list[0].m_fd_to_server, buf, MAX_MSG);
+
+						if (nbytes == -1 && errno == EAGAIN){
+							usleep(2);
+						}
+						else if (nbytes > 0){
+							//printf("Server: %s", buf);
+							printf("%s: %s", user_id, buf);
+							write(pipe_user_writing_to_server[1], buf, nbytes);
+						}
+
+            // Server commands
+            // memset(buf, '\0', sizeof(buf));  // overwrite the buffer
+            //
+            // // Make stdout non-blocking
+            // fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
+            //
+            // nbytes = read(0, buf, MAX_MSG);
+            // if (nbytes == -1 && errno == EAGAIN){
+						// 	usleep(2);
+						// } else if(nbytes > 0) {
+            //   int index = 0 ;
+            //   index = get_command_type(buf);
+            //
+            //   // 6 command type so 6 switch cases
+            //   switch (index) {
+            //     case 0 : // list
+            //               printf("List:\n");
+            //               list_users(-1, user_list);
+            //     case 1 : // kick
+            //               printf("Kick:\n");
+            //     case 2 : // p2p
+            //               printf("p2p:\n");
+            //     case 3 : // seg
+            //               printf("Seg:\n");
+            //     case 4 : // exit
+            //               printf("Exit:\n");
+            //   }
+            // }
+					}
+					wait(&status);
+					if (WEXITSTATUS(status) != 0){
+						printf("child exited with error code=%d\n", WEXITSTATUS(status));
+						exit(-1);
+					}
+				}
+
+				/*
+				~~~CHILD CODE~~~
+
+				else if(childpid == 0){
+
+					memset(buf, '\0', sizeof(buf));  // overwrite the buffer
+
+					//Complete opposite of PARENT side. Just as necessary.
+					close(pipe_SERVER_reading_from_child[0]);
+					close(pipe_SERVER_writing_to_child[1]);
+
+					while(1){
+
+						//POLL USER------------------------------------------
+						memset(buf, '\0', sizeof(buf));
+						nbytes = read(pipe_user_writing_to_server[0], buf, MAX_MSG);
+
+						if (nbytes == -1 && errno == EAGAIN) {
+							usleep(2);
+						}
+
+						else if (nbytes > 0) {
+							//This was good for the checkoff but we don't want it printing twice anymore
+							//printf("\nChild: %s", buf);
+							write(pipe_SERVER_reading_from_child[1], buf, nbytes);
+							memset(buf, '\0', sizeof(buf));
+						}
+
+						// POLL SERVER------------------------------------------
+						memset(buf, '\0', sizeof(buf));
+						nbytes = read(pipe_user_reading_from_server[0], buf, MAX_MSG);
+
+						if (nbytes == -1 && errno == EAGAIN) {
+							usleep(2);
+						}
+
+						else if (nbytes > 0) {
+							write(pipe_SERVER_writing_to_child[1], buf, nbytes);
+							memset(buf, '\0', sizeof(buf));
+						}
+					}
+				}
+				else {            // error if fork failed
+					perror("fork");
+					exit(0);
+				}
+            }
+        }
+    }
+}
+*/
+/* --------------------End of the main function ----------------------------------------*/

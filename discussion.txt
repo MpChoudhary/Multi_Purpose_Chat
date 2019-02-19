@@ -1,0 +1,17 @@
+
+AN - Have not implemented error checking on function and system calls. It will be a lot of lines of code,
+but I think it's generally easy and we can take care of it later.
+
+SEAN: The problem I'm working on right now might take some discussion. The server takes the initial connection and can receive messages properly from that first user. When a second user connects, the array of user structs is populated correctly, and that user can chat as normal - but the first user now cannot send messages.
+	This happens (I think) because they're trying to use the same pipes. I think we need to find a way to make the server create a new set of pipes for each user, which might take some redesigning of the program flow. I'm a bit at a loss of how to do that, but talking through it very well may help.
+
+<<<<<<< HEAD
+Mukesh: Working on the server commands in the parent code of server.c
+=======
+AN - I see what you're saying. I think we might just need to shift around some lines of code,
+so that we initialize the pipes after the fork? I'll play around with it and update if I find
+a solution.
+>>>>>>> 52a452d5c45c21a9e517f656c8a431f49e158cf4
+
+AN - the usleep call is in microseconds, so not sure how long it should be for. I'm thinking
+I'll go to office hours to ask, but 500 seems more suitable than the 2 which I initially put.
